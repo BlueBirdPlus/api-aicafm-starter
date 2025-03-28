@@ -1,0 +1,88 @@
+
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "AICAFM Smart FM API",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://api.aicafm.com"
+    }
+  ],
+  "paths": {
+    "/gpt/ask": {
+      "post": {
+        "summary": "Send a prompt in Arabic or English",
+        "operationId": "askGPT",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "prompt": {
+                    "type": "string"
+                  }
+                },
+                "required": ["prompt"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "GPT-style answer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "answer": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/assets/search": {
+      "get": {
+        "summary": "Search asset descriptions",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Search results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "code": { "type": "string" },
+                      "description": { "type": "string" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
