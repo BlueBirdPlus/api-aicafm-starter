@@ -3,10 +3,14 @@ from pydantic import BaseModel
 import sqlite3
 import re
 import openai
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = FastAPI()
 
-openai.api_key = "YOUR_OPENAI_API_KEY"
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 class Prompt(BaseModel):
     prompt: str
@@ -58,12 +62,8 @@ def gpt_ask(data: Prompt):
     prompt = data.prompt
 
     try:
-        # Fetch relevant data based on prompt
         db_data = get_db_data(prompt)
-
-        # Generate GPT-powered smart response
         smart_response = query_gpt(prompt, db_data)
-
         return {"answer": smart_response}
 
     except Exception as e:
