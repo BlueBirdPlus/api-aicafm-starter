@@ -1,61 +1,70 @@
-
-from fastapi import FastAPI, Query
+from fastapi import FastAPI
 from pydantic import BaseModel
 import sqlite3
 import re
+import openai
 
 app = FastAPI()
+
+openai.api_key = "YOUR_OPENAI_API_KEY"
 
 class Prompt(BaseModel):
     prompt: str
 
+# Function to interact with GPT
+def query_gpt(prompt, db_data):
+    system_prompt = (
+        "You are an assistant that answers queries about assets."
+        " The provided data from the database is:\n" + db_data
+    )
+
+    response = openai.ChatCompletion.create(
+        model="gpt-4-turbo",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt}
+        ]
+    )
+
+    return response.choices[0].message.content
+
+# Function to retrieve relevant data from the database
+def get_db_data(prompt):
+    conn = sqlite3.connect("equipment.db")
+    cursor = conn.cursor()
+
+    db_data = ""
+    
+    if re.search(r'\bhvac\b', prompt, re.I):
+        cursor.execute("SELECT asset_code, asset_description, site_code, build_code FROM raw_assets WHERE asset_family_description LIKE '%HVAC%' LIMIT 10")
+        rows = cursor.fetchall()
+        db_data += "HVAC Assets:\n" + "\n".join([f"{r[0]} - {r[1]} (Site: {r[2]}, Building: {r[3]})" for r in rows])
+
+    elif re.search(r'\bstatus\b', prompt, re.I):
+        cursor.execute("SELECT asset_code, asset_description, status FROM raw_assets LIMIT 10")
+        rows = cursor.fetchall()
+        db_data += "Asset Status:\n" + "\n".join([f"{r[0]} - {r[1]} (Status: {r[2]})" for r in rows])
+
+    else:
+        cursor.execute("SELECT asset_code, asset_description FROM raw_assets LIMIT 5")
+        rows = cursor.fetchall()
+        db_data += "General Assets:\n" + "\n".join([f"{r[0]} - {r[1]}" for r in rows])
+
+    conn.close()
+    return db_data
+
 @app.post("/gpt/ask")
 def gpt_ask(data: Prompt):
-    prompt = data.prompt.lower()
-    conn = sqlite3.connect("equipment.db")
-    cursor = conn.cursor()
-
-    response = "Sorry, I didn't understand the request. Try asking about asset count, status, or search."
+    prompt = data.prompt
 
     try:
-        if "hvac" in prompt and "site" in prompt and "building" in prompt:
-            site_match = re.search(r"site\s*(\d+)", prompt)
-            build_match = re.search(r"building\s*(\d+)", prompt)
+        # Fetch relevant data based on prompt
+        db_data = get_db_data(prompt)
 
-            if site_match and build_match:
-                site_code = site_match.group(1)
-                build_code = build_match.group(1)
-                query = f"""
-                    SELECT COUNT(*) FROM raw_assets
-                    WHERE LOWER(asset_family_description) LIKE '%hvac%'
-                    AND site_code LIKE '%{site_code}%'
-                    AND build_code LIKE '%{build_code}%'
-                """
-                cursor.execute(query)
-                count = cursor.fetchone()[0]
-                response = f"There are {count} HVAC assets in site {site_code}, building {build_code}."
+        # Generate GPT-powered smart response
+        smart_response = query_gpt(prompt, db_data)
 
-        elif "name" in prompt or "search" in prompt or "asset" in prompt:
-            cursor.execute("SELECT asset_code, asset_description FROM raw_assets LIMIT 5")
-            rows = cursor.fetchall()
-            response = "Search results:\n" + "\n".join([f"{r[0]} - {r[1]}" for r in rows])
-
-        elif "status" in prompt:
-            cursor.execute("SELECT asset_code, asset_description FROM raw_assets LIMIT 3")
-            rows = cursor.fetchall()
-            response = "Current asset status:\n" + "\n".join([f"{r[0]} - {r[1]}" for r in rows])
+        return {"answer": smart_response}
 
     except Exception as e:
-        response = f"Error occurred: {str(e)}"
-
-    conn.close()
-    return {"answer": response}
-
-@app.get("/assets/search")
-def search_assets(name: str = Query(..., description="Asset name (partial or full)")):
-    conn = sqlite3.connect("equipment.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT asset_code, asset_description FROM raw_assets WHERE asset_description LIKE ?", ('%' + name + '%',))
-    rows = cursor.fetchall()
-    conn.close()
-    return [{"code": r[0], "description": r[1]} for r in rows]
+        return {"answer": f"An error occurred: {str(e)}"}
